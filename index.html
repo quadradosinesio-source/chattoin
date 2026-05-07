@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat App</title>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:Arial; }
+
+body { height:100vh; }
+
+.app { display:flex; height:100vh; }
+
+.sidebar {
+  width:250px;
+  background:#111;
+  color:white;
+  padding:15px;
+}
+
+.chat {
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+.header {
+  background:#075E54;
+  color:white;
+  padding:15px;
+}
+
+.messages {
+  flex:1;
+  padding:10px;
+  overflow-y:auto;
+  background:#e5ddd5;
+}
+
+.msg {
+  margin:6px 0;
+  max-width:75%;
+  padding:10px;
+  border-radius:10px;
+}
+
+.me { background:#dcf8c6; margin-left:auto; }
+.other { background:white; }
+
+.input {
+  display:flex;
+  padding:8px;
+  background:#f0f0f0;
+  position:sticky;
+  bottom:0;
+}
+
+.input input {
+  flex:1;
+  padding:12px;
+  border-radius:25px;
+  border:none;
+}
+
+.input button {
+  margin-left:8px;
+  padding:12px;
+  border:none;
+  background:#075E54;
+  color:white;
+  border-radius:25px;
+}
+
+#auth {
+  position:fixed;
+  width:100%;
+  height:100%;
+  background:#000000cc;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+.auth-box {
+  background:white;
+  padding:20px;
+  border-radius:10px;
+  width:90%;
+  max-width:300px;
+}
+
+.auth-box input {
+  width:100%;
+  margin:5px 0;
+  padding:10px;
+}
+
+@media (max-width:768px){
+  .app { flex-direction:column; }
+  .sidebar { width:100%; }
+  .msg { max-width:85%; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="auth">
+  <div class="auth-box">
+    <h3>Cadastro / Login</h3>
+    <input id="name" placeholder="Seu nome">
+    <input id="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Senha">
+
+    <button onclick="register()">Cadastrar</button>
+    <button onclick="login()">Entrar</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app">
+
+  <div class="sidebar">
+    <h3>Usuário</h3>
+    <p id="userName"></p>
+    <button onclick="logout()">Sair</button>
+  </div>
+
+  <div class="chat">
+    <div class="header">Chat Online</div>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="input">
+      <input id="msg" placeholder="Digite..." onkeypress="if(event.key==='Enter') send()">
+      <button onclick="send()">Enviar</button>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+
+import {
+  getFirestore, collection, addDoc, onSnapshot,
+  query, orderBy, doc, setDoc, getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+import {
+  getAuth, createUserWithEmailAndPassword,
+  signInWithEmailAndPassword, signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+// CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyAVyK9QComos6PVHl_5pmM5QNOEruKP0f0",
+  authDomain: "chattoin-449e3.firebaseapp.com",
+  projectId: "chattoin-449e3",
+  storageBucket: "chattoin-449e3.firebasestorage.app",
+  messagingSenderId: "1062945243458",
+  appId: "1:1062945243458:web:3d81511daf7f45edb748db"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// 🔐 CADASTRO
+window.register = async () => {
+  const name = document.getElementById("name").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+
+  if (!name || !email || !password) {
+    alert("Preencha todos os campos!");
+    return;
+  }
+
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+    await setDoc(doc(db, "users", cred.user.uid), {
+      name,
+      email,
+      online: true,
+      lastSeen: Date.now()
+    });
+
+    alert("Conta criada!");
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+// 🔐 LOGIN
+window.login = async () => {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+
+  if (!email || !password) {
+    alert("Preencha email e senha!");
+    return;
+  }
+
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+// 🚪 LOGOUT
+window.logout = async () => {
+  await signOut(auth);
+};
+
+// 👀 AUTH STATE
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    document.getElementById("auth").style.display = "none";
+
+    const userRef = doc(db, "users", user.uid);
+    let snap = await getDoc(userRef);
+
+    let userData;
+
+    if (!snap.exists()) {
+      userData = {
+        name: user.email.split("@")[0],
+        email: user.email,
+        online: true,
+        lastSeen: Date.now()
+      };
+      await setDoc(userRef, userData);
+    } else {
+      userData = snap.data();
+    }
+
+    document.getElementById("userName").textContent = userData.name;
+
+    loadChat(user);
+  } else {
+    document.getElementById("auth").style.display = "flex";
+  }
+});
+
+// 🕒 HORA
+function formatTime(t) {
+  return new Date(t).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+// 💬 CHAT
+function loadChat(user) {
+  const messagesDiv = document.getElementById("messages");
+
+  const q = query(collection(db, "chat"), orderBy("time"));
+
+  onSnapshot(q, (snap) => {
+    messagesDiv.innerHTML = "";
+
+    snap.forEach(docSnap => {
+      const d = docSnap.data();
+
+      const div = document.createElement("div");
+      div.classList.add("msg");
+      div.classList.add(d.uid === user.uid ? "me" : "other");
+
+      div.innerHTML = `
+        <div style="font-size:11px;color:#666">${d.name}</div>
+        <div>${d.text}</div>
+        <div style="font-size:10px;text-align:right">${formatTime(d.time)}</div>
+      `;
+
+      messagesDiv.appendChild(div);
+    });
+
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  });
+}
+
+// 📤 ENVIAR
+window.send = async () => {
+  const user = auth.currentUser;
+  const msgInput = document.getElementById("msg");
+
+  if (!msgInput.value.trim()) return;
+
+  const snap = await getDoc(doc(db, "users", user.uid));
+  const userData = snap.data();
+
+  await addDoc(collection(db, "chat"), {
+    text: msgInput.value,
+    time: Date.now(),
+    uid: user.uid,
+    name: userData.name
+  });
+
+  msgInput.value = "";
+};
+</script>
+
+</body>
+</html>
